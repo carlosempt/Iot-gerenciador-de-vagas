@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estacionamento Central</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+    body { background: linear-gradient(to bottom, #2c0066, #6929a5); color: white; padding: 20px; text-align: center; }
+    header h1 { font-size: 2.5em; margin-bottom: 5px; }
+    header p { font-size: 1.2em; color: #ddd; margin-bottom: 20px; }
+    .contador { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; }
+    .contador div { background-color: rgba(255, 255, 255, 0.1); padding: 15px 30px; border-radius: 12px; font-size: 1.2em; }
+    .area-estacionamento { background-color: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; max-width: 900px; margin: 0 auto 30px; }
+    .area-estacionamento h2 { margin-bottom: 20px; }
+    .vagas { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+    .vaga { background: linear-gradient(to bottom, #2e3d5c, #202c48); padding: 20px; border-radius: 12px; width: 250px; color: white; position: relative; }
+    .vaga .numero { position: absolute; top: 10px; right: 10px; background-color: #ffcc00; color: black; padding: 2px 8px; border-radius: 50%; font-weight: bold; }
+    .vaga .status { margin: 10px 0; font-weight: bold; }
+    .tempo { margin-top: 10px; font-size: 0.9em; color: #ccc; }
+    .historico { background-color: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; max-width: 800px; margin: 0 auto; text-align: left; }
+    .historico h3 { margin-bottom: 15px; }
+    .historico ul { list-style: none; }
+    .historico li { background-color: rgba(255,255,255,0.05); margin-bottom: 8px; padding: 10px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🚗 Estacionamento Central</h1>
+    <p>Controle de Vagas Online (Automático via Sensores)</p>
+  </header>
+
+  <div class="contador">
+    <div><span id="disponiveis">3</span> Disponíveis</div>
+    <div><span id="ocupadas">0</span> Ocupadas</div>
+    <div><span id="total">3</span> Total</div>
+  </div>
+
+  <div class="area-estacionamento">
+    <h2>🚗 Área de Estacionamento</h2>
+    <div class="vagas">
+      <div class="vaga verde" id="vaga1">
+        <div class="numero">01</div>
+        <p>Vaga Número 1</p>
+        <div class="status" id="status1">Aguardando...</div>
+        <div class="tempo" id="tempo1">Tempo: ~~~</div>
+      </div>
+
+      <div class="vaga azul" id="vaga2">
+        <div class="numero">02</div>
+        <p>Vaga Número 2</p>
+        <div class="status" id="status2">Aguardando...</div>
+        <div class="tempo" id="tempo2">Tempo: ~~~</div>
+      </div>
+
+      <div class="vaga rosa" id="vaga3">
+        <div class="numero">03</div>
+        <p>Vaga Número 3</p>
+        <div class="status" id="status3">Aguardando...</div>
+        <div class="tempo" id="tempo3">Tempo: ~~~</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="historico">
+    <h3>📃 Histórico Recente</h3>
+    <ul id="historico-lista"></ul>
+  </div>
+
+  <script>
+    const serverUrl = 'https://iot-gerenciador-de-vagas.onrender.com/'; 
+
+    const vagasState = {
+      "1": { timer: null, segundos: 0, statusAnterior: null },
+      "2": { timer: null, segundos: 0, statusAnterior: null },
+      "3": { timer: null, segundos: 0, statusAnterior: null }
+    };
+
+    function formatarTempo(segundos) {
+      const m = String(Math.floor(segundos / 60)).padStart(2, '0');
+      const s = String(segundos % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function adicionarHistorico(mensagem) {
+        const historico = document.getElementById("historico-lista");
+        const item = document.createElement("li");
+        const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        item.textContent = `${mensagem} às ${hora}`;
+        historico.prepend(item);
+    }
+
+    function atualizarInterface(statusVagas) {
+      let disponiveis = 0;
+      let ocupadas = 0;
+      
+      for (const vagaId in statusVagas) {
+        const vagaServidor = statusVagas[vagaId];
+        const vagaLocal = vagasState[vagaId];
+        
+        const statusEl = document.getElementById(`status${vagaId}`);
+        const tempoEl = document.getElementById(`tempo${vagaId}`);
+
+        if (vagaServidor.status !== vagaLocal.statusAnterior) {
+            vagaLocal.statusAnterior = vagaServidor.status;
+            
+            if (vagaServidor.status === 'ocupada') {
+                statusEl.textContent = "Ocupada";
+                adicionarHistorico(`Vaga ${vagaId} foi ocupada`);
+                
+                clearInterval(vagaLocal.timer);
+                vagaLocal.segundos = 0;
+                vagaLocal.timer = setInterval(() => {
+                    vagaLocal.segundos++;
+                    tempoEl.textContent = `Tempo: ${formatarTempo(vagaLocal.segundos)}`;
+                }, 1000);
+
+            } else {
+                statusEl.textContent = "Disponível";
+                adicionarHistorico(`Vaga ${vagaId} foi liberada`);
+                
+                clearInterval(vagaLocal.timer);
+                vagaLocal.timer = null;
+                tempoEl.textContent = `Tempo: ~~~`;
+                vagaLocal.segundos = 0;
+            }
+        }
+
+        if (vagaServidor.status === 'ocupada') {
+          ocupadas++;
+        } else {
+          disponiveis++;
+        }
+      }
+
+      document.getElementById("disponiveis").textContent = disponiveis;
+      document.getElementById("ocupadas").textContent = ocupadas;
+    }
+
+    async function buscarStatusDasVagas() {
+      try {
+        const response = await fetch(serverUrl);
+        if (!response.ok) {
+          throw new Error(`Erro de rede: ${response.statusText}`);
+        }
+        const data = await response.json();
+        atualizarInterface(data);
+      } catch (error) {
+        console.error("Falha ao buscar dados do servidor:", error);
+      }
+    }
+    
+    // Inicia a busca por atualizações a cada 5 segundos
+    setInterval(buscarStatusDasVagas, 5000);
+
+    // Busca o estado inicial assim que a página carrega
+    document.addEventListener('DOMContentLoaded', buscarStatusDasVagas);
+
+    // CORREÇÃO: Força a primeira busca de dados assim que o script é lido.
+    buscarStatusDasVagas();
+  </script>
+</body>
+</html>
